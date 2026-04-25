@@ -90,6 +90,31 @@
     </section>
 
     <section class="card">
+    <h2>Nueva imagen</h2>
+
+    <form @submit.prevent="uploadImage">
+        <label>Producto</label>
+        <select v-model="imageForm.product_id" required>
+        <option value="">Selecciona un producto</option>
+        <option
+            v-for="product in products"
+            :key="product.id"
+            :value="product.id"
+        >
+            {{ product.name }}
+        </option>
+        </select>
+
+        <label>Imagen</label>
+        <input type="file" accept="image/*" @change="handleImageFile" required>
+
+        <div class="actions">
+        <button type="submit">Subir imagen</button>
+        </div>
+    </form>
+    </section>
+
+    <section class="card">
       <h2>Listado de productos</h2>
 
       <p v-if="loading">Cargando productos...</p>
@@ -102,6 +127,7 @@
             <th>Descripción</th>
             <th>Categorías</th>
             <th>Tarifas</th>
+            <th>Fotos</th>
             <th>Acciones</th>
           </tr>
         </thead>
@@ -129,6 +155,21 @@
             </div>
 
             <span v-if="getProductRates(product.id).length === 0">-</span>
+            </td>
+
+            <td>
+            <div class="image-list">
+                <div
+                v-for="image in getProductImages(product.id)"
+                :key="image.id"
+                class="image-item"
+                >
+                <img :src="getImageUrl(image.image_path)" alt="Foto producto">
+                <button class="mini danger" @click="deleteImage(image)">X</button>
+                </div>
+
+                <span v-if="getProductImages(product.id).length === 0">-</span>
+            </div>
             </td>
 
             <td>
@@ -161,6 +202,7 @@ const products = ref([])
 const categories = ref([])
 const productCategories = ref([])
 const productRates = ref([])
+const productImages = ref([])
 
 const loading = ref(true)
 const error = ref('')
@@ -179,6 +221,11 @@ const rateForm = ref({
   start_date: '',
   end_date: '',
   price: ''
+})
+
+const imageForm = ref({
+  product_id: '',
+  file: null
 })
 
 onMounted(async () => {
@@ -203,7 +250,8 @@ async function loadAll() {
       loadProducts(),
       loadCategories(),
       loadProductCategories(),
-      loadProductRates()
+      loadProductRates(),
+      loadProductImages()
     ])
   } catch (e) {
     error.value = e.message
@@ -265,6 +313,20 @@ async function loadProductRates() {
   }
 
   productRates.value = data
+}
+
+async function loadProductImages() {
+  const { data, error: loadError } = await supabase
+    .from('product_images')
+    .select('*')
+    .order('sort_order', { ascending: true })
+
+  if (loadError) {
+    error.value = loadError.message
+    return
+  }
+
+  productImages.value = data
 }
 
 async function saveProduct() {
@@ -396,6 +458,85 @@ async function deleteRate(id) {
   await loadProductRates()
 }
 
+function handleImageFile(event) {
+  imageForm.value.file = event.target.files[0]
+}
+
+async function uploadImage() {
+  error.value = ''
+  success.value = ''
+
+  if (!imageForm.value.product_id || !imageForm.value.file) {
+    error.value = 'Selecciona un producto y una imagen.'
+    return
+  }
+
+  const file = imageForm.value.file
+  const fileName = `${Date.now()}-${file.name}`
+  const filePath = `${imageForm.value.product_id}/${fileName}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('product-images')
+    .upload(filePath, file)
+
+  if (uploadError) {
+    error.value = uploadError.message
+    return
+  }
+
+  const { error: insertError } = await supabase
+    .from('product_images')
+    .insert({
+      product_id: imageForm.value.product_id,
+      image_path: filePath,
+      sort_order: 0
+    })
+
+  if (insertError) {
+    error.value = insertError.message
+    return
+  }
+
+  success.value = 'Imagen subida correctamente.'
+
+  imageForm.value = {
+    product_id: '',
+    file: null
+  }
+
+  await loadProductImages()
+}
+
+async function deleteImage(image) {
+  const confirmed = confirm('¿Seguro que quieres eliminar esta imagen?')
+
+  if (!confirmed) {
+    return
+  }
+
+  const { error: storageError } = await supabase.storage
+    .from('product-images')
+    .remove([image.image_path])
+
+  if (storageError) {
+    error.value = storageError.message
+    return
+  }
+
+  const { error: deleteError } = await supabase
+    .from('product_images')
+    .delete()
+    .eq('id', image.id)
+
+  if (deleteError) {
+    error.value = deleteError.message
+    return
+  }
+
+  success.value = 'Imagen eliminada correctamente.'
+  await loadProductImages()
+}
+
 function editProduct(product) {
   editingId.value = product.id
 
@@ -460,6 +601,18 @@ function getProductCategories(productId) {
 
 function getProductRates(productId) {
   return productRates.value.filter(rate => rate.product_id === productId)
+}
+
+function getImageUrl(path) {
+  const { data } = supabase.storage
+    .from('product-images')
+    .getPublicUrl(path)
+
+  return data.publicUrl
+}
+
+function getProductImages(productId) {
+  return productImages.value.filter(image => image.product_id === productId)
 }
 </script>
 
@@ -590,6 +743,29 @@ button.danger {
 .success {
   color: #16a34a;
   margin-top: 16px;
+}
+
+.image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image-item {
+  position: relative;
+  width: 70px;
+}
+
+.image-item img {
+  width: 70px;
+  height: 70px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.image-item button {
+  margin-top: 4px;
 }
 
 table {

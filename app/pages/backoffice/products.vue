@@ -117,6 +117,10 @@
     <section class="card">
       <h2>Listado de productos</h2>
 
+      <button class="export-button" @click="exportProductsXls">
+      Exportar XLS
+      </button>
+
       <p v-if="loading">Cargando productos...</p>
 
       <table v-else>
@@ -614,6 +618,175 @@ function getImageUrl(path) {
 function getProductImages(productId) {
   return productImages.value.filter(image => image.product_id === productId)
 }
+
+async function exportProductsXls() {
+    const XLSX = await import('xlsx-js-style')
+    const rows = products.value.map(product => {
+    const rates = getProductRates(product.id)
+      .map(rate => `${rate.start_date} - ${rate.end_date || 'Sin fin'}: ${rate.price} €`)
+      .join('\n')
+
+    const images = getProductImages(product.id).length
+
+    return {
+      Código: product.code,
+      Nombre: product.name,
+      Descripción: product.description || '',
+      Categorías: getProductCategories(product.id),
+      Tarifas: rates || '-',
+      Fotos: images
+    }
+  })
+
+  const data = [
+    ['Listado de productos'],
+    [`Exportado el ${new Date().toLocaleDateString('es-ES')}`],
+    [],
+    ['Código', 'Nombre', 'Descripción', 'Categorías', 'Tarifas', 'Fotos'],
+    ...rows.map(row => [
+      row.Código,
+      row.Nombre,
+      row.Descripción,
+      row.Categorías,
+      row.Tarifas,
+      row.Fotos
+    ])
+  ]
+
+  const worksheet = XLSX.utils.aoa_to_sheet(data)
+
+  worksheet['!cols'] = [
+    { wch: 16 },
+    { wch: 28 },
+    { wch: 45 },
+    { wch: 30 },
+    { wch: 45 },
+    { wch: 10 }
+  ]
+
+  worksheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }
+  ]
+
+  const range = XLSX.utils.decode_range(worksheet['!ref'])
+
+  for (let row = range.s.r; row <= range.e.r; row++) {
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+
+      if (!worksheet[cellAddress]) {
+        worksheet[cellAddress] = { t: 's', v: '' }
+      }
+
+      worksheet[cellAddress].s = {
+        font: {
+          name: 'Arial',
+          sz: 11,
+          color: { rgb: '1E293B' }
+        },
+        alignment: {
+          vertical: 'center',
+          wrapText: true
+        },
+        border: {
+          top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          right: { style: 'thin', color: { rgb: 'CBD5E1' } }
+        }
+      }
+    }
+  }
+
+  worksheet['A1'].s = {
+    font: {
+      name: 'Arial',
+      sz: 18,
+      bold: true,
+      color: { rgb: 'FFFFFF' }
+    },
+    fill: {
+      fgColor: { rgb: '1D4ED8' }
+    },
+    alignment: {
+      horizontal: 'center',
+      vertical: 'center'
+    }
+  }
+
+  worksheet['A2'].s = {
+    font: {
+      name: 'Arial',
+      sz: 11,
+      italic: true,
+      color: { rgb: '475569' }
+    },
+    fill: {
+      fgColor: { rgb: 'E0F2FE' }
+    },
+    alignment: {
+      horizontal: 'center',
+      vertical: 'center'
+    }
+  }
+
+  const headerRow = 3
+
+  for (let col = 0; col <= 5; col++) {
+    const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col })
+
+    worksheet[cellAddress].s = {
+      font: {
+        name: 'Arial',
+        sz: 12,
+        bold: true,
+        color: { rgb: 'FFFFFF' }
+      },
+      fill: {
+        fgColor: { rgb: '0F172A' }
+      },
+      alignment: {
+        horizontal: 'center',
+        vertical: 'center'
+      },
+      border: {
+        top: { style: 'thin', color: { rgb: '0F172A' } },
+        bottom: { style: 'thin', color: { rgb: '0F172A' } },
+        left: { style: 'thin', color: { rgb: '0F172A' } },
+        right: { style: 'thin', color: { rgb: '0F172A' } }
+      }
+    }
+  }
+
+  for (let row = 4; row <= range.e.r; row++) {
+    const fillColor = row % 2 === 0 ? 'F8FAFC' : 'FFFFFF'
+
+    for (let col = 0; col <= 5; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+
+      worksheet[cellAddress].s.fill = {
+        fgColor: { rgb: fillColor }
+      }
+    }
+  }
+
+  worksheet['!rows'] = [
+    { hpt: 32 },
+    { hpt: 24 },
+    { hpt: 8 },
+    { hpt: 26 }
+  ]
+
+  worksheet['!autofilter'] = {
+    ref: 'A4:F4'
+  }
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Productos')
+
+  XLSX.writeFile(workbook, 'productos.xlsx')
+}
 </script>
 
 <style scoped>
@@ -704,6 +877,11 @@ textarea {
 .rate-line {
   margin-bottom: 6px;
   font-size: 14px;
+}
+
+.export-button {
+  margin-bottom: 18px;
+  background: #16a34a;
 }
 
 button.mini {

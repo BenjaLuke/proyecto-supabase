@@ -59,6 +59,37 @@
     </section>
 
     <section class="card">
+    <h2>Nueva tarifa</h2>
+
+    <form @submit.prevent="saveRate">
+        <label>Producto</label>
+        <select v-model="rateForm.product_id" required>
+        <option value="">Selecciona un producto</option>
+        <option
+            v-for="product in products"
+            :key="product.id"
+            :value="product.id"
+        >
+            {{ product.name }}
+        </option>
+        </select>
+
+        <label>Fecha inicio</label>
+        <input v-model="rateForm.start_date" type="date" required>
+
+        <label>Fecha fin</label>
+        <input v-model="rateForm.end_date" type="date">
+
+        <label>Precio</label>
+        <input v-model="rateForm.price" type="number" step="0.01" required>
+
+        <div class="actions">
+        <button type="submit">Crear tarifa</button>
+        </div>
+    </form>
+    </section>
+
+    <section class="card">
       <h2>Listado de productos</h2>
 
       <p v-if="loading">Cargando productos...</p>
@@ -70,6 +101,7 @@
             <th>Nombre</th>
             <th>Descripción</th>
             <th>Categorías</th>
+            <th>Tarifas</th>
             <th>Acciones</th>
           </tr>
         </thead>
@@ -80,8 +112,27 @@
             <td>{{ product.name }}</td>
             <td>{{ product.description }}</td>
             <td>{{ getProductCategories(product.id) }}</td>
+
             <td>
-              <button class="small" @click="editProduct(product)">
+            <div
+                v-for="rate in getProductRates(product.id)"
+                :key="rate.id"
+                class="rate-line"
+            >
+                {{ rate.start_date }} -
+                {{ rate.end_date || 'Sin fin' }}:
+                {{ rate.price }} €
+
+                <button class="mini danger" @click="deleteRate(rate.id)">
+                X
+                </button>
+            </div>
+
+            <span v-if="getProductRates(product.id).length === 0">-</span>
+            </td>
+
+            <td>
+            <button class="small" @click="editProduct(product)">
                 Editar
               </button>
               <button class="small danger" @click="deleteProduct(product.id)">
@@ -109,6 +160,7 @@ const supabase = createClient(
 const products = ref([])
 const categories = ref([])
 const productCategories = ref([])
+const productRates = ref([])
 
 const loading = ref(true)
 const error = ref('')
@@ -120,6 +172,13 @@ const form = ref({
   code: '',
   name: '',
   description: ''
+})
+
+const rateForm = ref({
+  product_id: '',
+  start_date: '',
+  end_date: '',
+  price: ''
 })
 
 onMounted(async () => {
@@ -139,13 +198,18 @@ async function loadAll() {
   loading.value = true
   error.value = ''
 
-  await Promise.all([
-    loadProducts(),
-    loadCategories(),
-    loadProductCategories()
-  ])
-
-  loading.value = false
+  try {
+    await Promise.all([
+      loadProducts(),
+      loadCategories(),
+      loadProductCategories(),
+      loadProductRates()
+    ])
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
 }
 
 async function loadProducts() {
@@ -187,6 +251,20 @@ async function loadProductCategories() {
   }
 
   productCategories.value = data
+}
+
+async function loadProductRates() {
+  const { data, error: loadError } = await supabase
+    .from('product_rates')
+    .select('*')
+    .order('start_date', { ascending: true })
+
+  if (loadError) {
+    error.value = loadError.message
+    return
+  }
+
+  productRates.value = data
 }
 
 async function saveProduct() {
@@ -265,6 +343,59 @@ async function saveProductCategories(productId) {
   }
 }
 
+async function saveRate() {
+  error.value = ''
+  success.value = ''
+
+  const payload = {
+    product_id: rateForm.value.product_id,
+    start_date: rateForm.value.start_date,
+    end_date: rateForm.value.end_date || null,
+    price: Number(rateForm.value.price)
+  }
+
+  const { error: insertError } = await supabase
+    .from('product_rates')
+    .insert(payload)
+
+  if (insertError) {
+    error.value = insertError.message
+    return
+  }
+
+  success.value = 'Tarifa creada correctamente.'
+
+  rateForm.value = {
+    product_id: '',
+    start_date: '',
+    end_date: '',
+    price: ''
+  }
+
+  await loadProductRates()
+}
+
+async function deleteRate(id) {
+  const confirmed = confirm('¿Seguro que quieres eliminar esta tarifa?')
+
+  if (!confirmed) {
+    return
+  }
+
+  const { error: deleteError } = await supabase
+    .from('product_rates')
+    .delete()
+    .eq('id', id)
+
+  if (deleteError) {
+    error.value = deleteError.message
+    return
+  }
+
+  success.value = 'Tarifa eliminada correctamente.'
+  await loadProductRates()
+}
+
 function editProduct(product) {
   editingId.value = product.id
 
@@ -325,6 +456,10 @@ function getProductCategories(productId) {
     .map(category => category.name)
 
   return names.length ? names.join(', ') : '-'
+}
+
+function getProductRates(productId) {
+  return productRates.value.filter(rate => rate.product_id === productId)
 }
 </script>
 
@@ -411,6 +546,17 @@ textarea {
   display: flex;
   gap: 10px;
   margin-top: 18px;
+}
+
+.rate-line {
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+button.mini {
+  padding: 3px 7px;
+  margin-left: 6px;
+  font-size: 12px;
 }
 
 button {

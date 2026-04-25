@@ -13,6 +13,10 @@
         Gestionar categorías
       </NuxtLink>
 
+      <NuxtLink class="menu-link" to="/backoffice/products">
+        Gestionar productos
+      </NuxtLink>
+
     </section>
   </main>
 </template>
@@ -76,6 +80,7 @@ button {
 .menu-link {
   display: inline-block;
   margin-top: 20px;
+  margin-right: 10px;
   padding: 12px 16px;
   background: #2563eb;
   color: white;

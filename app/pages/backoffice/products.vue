@@ -177,8 +177,11 @@
             </td>
 
             <td>
-            <button class="small" @click="editProduct(product)">
+              <button class="small" @click="editProduct(product)">
                 Editar
+              </button>
+              <button class="small pdf" @click="exportProductPdf(product)">
+                PDF
               </button>
               <button class="small danger" @click="deleteProduct(product.id)">
                 Eliminar
@@ -786,7 +789,78 @@ async function exportProductsXls() {
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Productos')
 
   XLSX.writeFile(workbook, 'productos.xlsx')
-}
+  }
+
+  async function exportProductPdf(product) {
+    const { jsPDF } = await import('jspdf')
+    const autoTableModule = await import('jspdf-autotable')
+    const autoTable = autoTableModule.default
+
+    const doc = new jsPDF()
+
+    const categories = getProductCategories(product.id)
+    const rates = getProductRates(product.id)
+    const images = getProductImages(product.id)
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(18)
+    doc.text('Ficha de producto', 14, 20)
+
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Exportado el ${new Date().toLocaleDateString('es-ES')}`, 14, 28)
+
+    autoTable(doc, {
+      startY: 38,
+      head: [['Campo', 'Información']],
+      body: [
+        ['Código', product.code],
+        ['Nombre', product.name],
+        ['Descripción', product.description || '-'],
+        ['Categorías', categories],
+        ['Número de fotos', String(images.length)]
+      ],
+      theme: 'grid',
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: 255,
+        fontStyle: 'bold'
+      },
+      styles: {
+        fontSize: 10,
+        cellPadding: 4,
+        valign: 'middle'
+      },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 45 },
+        1: { cellWidth: 130 }
+      }
+    })
+
+    const rateRows = rates.map(rate => [
+      rate.start_date,
+      rate.end_date || 'Sin fin',
+      `${rate.price} €`
+    ])
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 12,
+      head: [['Fecha inicio', 'Fecha fin', 'Precio']],
+      body: rateRows.length ? rateRows : [['-', '-', '-']],
+      theme: 'striped',
+      headStyles: {
+        fillColor: [37, 99, 235],
+        textColor: 255,
+        fontStyle: 'bold'
+      },
+      styles: {
+        fontSize: 10,
+        cellPadding: 4
+      }
+    })
+
+    doc.save(`producto-${product.code}.pdf`)
+  }
 </script>
 
 <style scoped>
@@ -960,5 +1034,8 @@ td {
 
 th {
   background: #f1f5f9;
+}
+button.pdf {
+  background: #7c3aed;
 }
 </style>

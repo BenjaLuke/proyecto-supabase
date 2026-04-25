@@ -17,6 +17,9 @@
         Gestionar productos
       </NuxtLink>
 
+      <NuxtLink class="menu-link" to="/backoffice/calendar">
+        Calendario de pedidos
+      </NuxtLink>
     </section>
   </main>
 </template>
